@@ -9,15 +9,10 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
-# Initialize session state keys to avoid KeyError
-if "name" not in st.session_state:
-    st.session_state["name"] = "Commanding Officer"
-if "username" not in st.session_state:
-    st.session_state["username"] = "Officer"
-if "user_role" not in st.session_state:
-    st.session_state["user_role"] = "Admin"
+
+# Initialize session state keys safely (Default logged_in = False for login gate)
 if "logged_in" not in st.session_state:
-    st.session_state["logged_in"] = True
+    st.session_state["logged_in"] = False
 
 import pandas as pd
 import numpy as np
@@ -37,11 +32,6 @@ else:
     APP_DIR = os.path.dirname(os.path.abspath(__file__))
 
 DB_PATH = os.path.join(APP_DIR, "fleet_data.db")
-# Initialize session state keys to avoid KeyError
-if 'username' not in st.session_state:
-    st.session_state['username'] = "Officer"
-if 'logged_in' not in st.session_state:
-    st.session_state['logged_in'] = True
 
 # ---------------------------------------------------------
 # 2. CUSTOM LOGIN SYSTEM (no external auth library — version-proof)
@@ -49,9 +39,6 @@ if 'logged_in' not in st.session_state:
 def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode('utf-8')).hexdigest()
 
-# CHANGE THESE before real deployment.
-# To generate a new hash for a password, run once in Python:
-#   import hashlib; print(hashlib.sha256("your_new_password".encode()).hexdigest())
 USER_DB = {
     "commander1": {
         "name": "Unit Commander",
@@ -87,15 +74,16 @@ def logout_button():
     if st.sidebar.button("🚪 Logout"):
         for key in ["logged_in", "username", "name", "role"]:
             st.session_state.pop(key, None)
+        st.session_state["logged_in"] = False
         st.rerun()
 
 if not st.session_state.get("logged_in", False):
     login_screen()
     st.stop()
 
-username = st.session_state.get("username","Officer")
-name = st.session_state.get("name","Commanding Officer")
-user_role = st.session_state.get("role","Admin")
+username = st.session_state.get("username", "Officer")
+name = st.session_state.get("name", "Commanding Officer")
+user_role = st.session_state.get("role", "editor")
 
 # ---------------------------------------------------------
 # 3. DATABASE LAYER (SQLite — persists across restarts)
@@ -209,8 +197,6 @@ logout_button()
 
 # ---------------------------------------------------------
 # 7. FEATURE PARSER & RISK SCORING ENGINE
-#    NOTE: this is a RULE-BASED statistical estimate, not a trained ML model.
-#    A real ML model needs labeled historical failure outcomes.
 # ---------------------------------------------------------
 def parse_features(raw_df):
     df = raw_df.copy()
@@ -323,7 +309,8 @@ df_full = parse_features(raw_store)
 # ---------------------------------------------------------
 units_15 = [f"Unit {chr(65 + i)}" for i in range(15)]
 
-if user_role == "editor":
+# Upload enabled for both editor and Admin
+if user_role in ["editor", "Admin"]:
     uploaded_file = st.sidebar.file_uploader("📂 Ingest Unit Workshop File (.xlsx / .csv)", type=["xlsx", "csv"])
     if uploaded_file:
         try:
@@ -352,7 +339,7 @@ sel_sub = st.sidebar.selectbox("Filter Subsystem Defect", ["All Subsystems"] + (
 sel_vin = st.sidebar.selectbox("Filter Vintage (Age)", ["All Vintage", "0-5 Years", "5-10 Years", "10-15 Years", "15+ Years"])
 sel_mil = st.sidebar.selectbox("Filter Mileage Range", ["All Mileage", "0-25k KM", "25k-50k KM", "50k-75k KM", "75k-1 Lakh KM", "Beyond 1 Lakh KM"])
 
-if user_role == "editor":
+if user_role in ["editor", "Admin"]:
     st.sidebar.markdown("---")
     st.sidebar.subheader("➕ Add / Update Defect Record")
     with st.sidebar.form("add_new_defect_form", clear_on_submit=True):
@@ -539,7 +526,7 @@ with tab_docket:
 
     if dff.empty:
         st.info("No records to display.")
-    elif user_role == "editor":
+    elif user_role in ["editor", "Admin"]:
         st.caption("Double click any cell to edit details directly, or add new rows at the bottom.")
         edited_df = st.data_editor(dff[cols], num_rows="dynamic", use_container_width=True)
     else:
