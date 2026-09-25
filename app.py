@@ -9,6 +9,15 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+# Initialize session state keys to avoid KeyError
+if "name" not in st.session_state:
+    st.session_state["name"] = "Commanding Officer"
+if "username" not in st.session_state:
+    st.session_state["username"] = "Officer"
+if "user_role" not in st.session_state:
+    st.session_state["user_role"] = "Admin"
+if "logged_in" not in st.session_state:
+    st.session_state["logged_in"] = True
 
 import pandas as pd
 import numpy as np
@@ -84,9 +93,9 @@ if not st.session_state.get("logged_in", False):
     login_screen()
     st.stop()
 
-username = st.session_state["username"]
-name = st.session_state["name"]
-user_role = st.session_state["role"]
+username = st.session_state.get["username","Officer"]
+name = st.session_state.get["name","Commanding Officer"]
+user_role = st.session_state.get["role","Admin"]
 
 # ---------------------------------------------------------
 # 3. DATABASE LAYER (SQLite — persists across restarts)
