@@ -9,7 +9,6 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
-st.title("testing new code v2")
 
 import pandas as pd
 import numpy as np
