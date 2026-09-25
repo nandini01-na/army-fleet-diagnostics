@@ -93,9 +93,9 @@ if not st.session_state.get("logged_in", False):
     login_screen()
     st.stop()
 
-username = st.session_state.get["username","Officer"]
-name = st.session_state.get["name","Commanding Officer"]
-user_role = st.session_state.get["role","Admin"]
+username = st.session_state.get("username","Officer")
+name = st.session_state.get("name","Commanding Officer")
+user_role = st.session_state.get("role","Admin")
 
 # ---------------------------------------------------------
 # 3. DATABASE LAYER (SQLite — persists across restarts)
