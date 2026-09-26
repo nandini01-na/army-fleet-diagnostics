@@ -10,7 +10,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Initialize session state keys safely (Default logged_in = False for login gate)
+# Initialize session state keys safely
 if "logged_in" not in st.session_state:
     st.session_state["logged_in"] = False
 
@@ -24,8 +24,7 @@ import hashlib
 import sys
 import os
 
-# Works whether running as a normal script or as a PyInstaller-frozen .exe —
-# the database always sits next to the executable/script, not in a temp folder.
+# Set proper directory path
 if getattr(sys, 'frozen', False):
     APP_DIR = os.path.dirname(sys.executable)
 else:
@@ -34,7 +33,7 @@ else:
 DB_PATH = os.path.join(APP_DIR, "fleet_data.db")
 
 # ---------------------------------------------------------
-# 2. CUSTOM LOGIN SYSTEM (no external auth library — version-proof)
+# 2. CUSTOM LOGIN SYSTEM
 # ---------------------------------------------------------
 def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode('utf-8')).hexdigest()
@@ -86,7 +85,7 @@ name = st.session_state.get("name", "Commanding Officer")
 user_role = st.session_state.get("role", "editor")
 
 # ---------------------------------------------------------
-# 3. DATABASE LAYER (SQLite — persists across restarts)
+# 3. DATABASE LAYER
 # ---------------------------------------------------------
 def init_db():
     conn = sqlite3.connect(DB_PATH)
@@ -137,7 +136,7 @@ def seed_db_if_empty():
     conn.close()
 
 # ---------------------------------------------------------
-# 4. BASE FLEET DATASET (used only to seed the DB once)
+# 4. BASE FLEET DATASET
 # ---------------------------------------------------------
 @st.cache_data
 def get_base_fleet():
@@ -184,9 +183,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ---------------------------------------------------------
-# 6. INITIALIZE DB & SHOW LOGGED-IN STATE
-# ---------------------------------------------------------
 init_db()
 seed_db_if_empty()
 
@@ -196,7 +192,7 @@ st.sidebar.caption(f"Role: **{user_role}**")
 logout_button()
 
 # ---------------------------------------------------------
-# 7. FEATURE PARSER & RISK SCORING ENGINE
+# 6. FEATURE PARSER & RISK SCORING ENGINE
 # ---------------------------------------------------------
 def parse_features(raw_df):
     df = raw_df.copy()
@@ -214,7 +210,7 @@ def parse_features(raw_df):
     c_unit = get_col([r'unit', r'regiment'])
     c_nom = get_col([r'nom', r'type', r'variant', r'make'])
     c_ba = get_col([r'ba.*no', r'veh.*no', r'number'])
-    c_ind = get_col([r'induct', r'vintage', r'yom'])
+    c_ind = get_col([r'induct', r'vintage', r'yom', r'dt.*induct'])
     c_km = get_col([r'km.*in', r'odometer', r'mileage'])
     c_def = get_col([r'defect', r'fault', r'complaint'])
     c_rep = get_col([r'repair', r'activity', r'action'])
@@ -265,12 +261,12 @@ def parse_features(raw_df):
 
         if any(w in d for w in ['ENGINE', 'RADIATOR', 'WATER PUMP', 'FAN BELT', 'OVERHEAT', 'COOLANT']):
             sub, sub_severity = "Thermal & Cooling", 30
+        elif any(w in d for w in ['BRAKE', 'AIR PRESSURE', 'COMPRESS', 'BOOSTER']):
+            sub, sub_severity = "Braking & Pneumatics", 30
         elif any(w in d for w in ['GEAR', 'CLUTCH', 'AXLE', 'PROPELLER', 'DRIVE']):
             sub, sub_severity = "Transmission & Drivetrain", 25
         elif any(w in d for w in ['SPRING', 'SUSPENSION', 'HUB SEAL', 'LEAF']):
             sub, sub_severity = "Suspension & Running Gear", 20
-        elif any(w in d for w in ['BRAKE', 'AIR PRESSURE', 'COMPRESS', 'BOOSTER']):
-            sub, sub_severity = "Braking & Pneumatics", 30
         elif any(w in d for w in ['SWITCH', 'LIGHT', 'WIPER', 'BATTERY', 'SOLENOID', 'DOOR']):
             sub, sub_severity = "Electrical & Body", 15
         else:
@@ -299,63 +295,46 @@ def parse_features(raw_df):
     return res_df
 
 # ---------------------------------------------------------
-# 8. LOAD DATA FROM DATABASE (persists across restarts)
-# ---------------------------------------------------------
-raw_store = load_all_records()
-df_full = parse_features(raw_store)
-
-# ---------------------------------------------------------
-# 9. SIDEBAR: INGESTION & FILTERS
+# 7. INGESTION & DATA FLOW (PRIORITIZES UPLOADED FILE)
 # ---------------------------------------------------------
 units_15 = [f"Unit {chr(65 + i)}" for i in range(15)]
 
-# Upload enabled for both editor and Admin
+uploaded_file = None
 if user_role in ["editor", "Admin"]:
     uploaded_file = st.sidebar.file_uploader("📂 Ingest Unit Workshop File (.xlsx / .csv)", type=["xlsx", "csv"])
-    if uploaded_file is not None:
-        file_id = f"{uploaded_file.name}_{uploaded_file.size}"
-        if st.session_state.get("current_file") != file_id:
-            try:
-                new_df = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
-                parsed = parse_features(new_df)
-                
-                # 1. Purana sample data delete taaki logs mix na hon
-                conn = sqlite3.connect(DB_PATH)
-                conn.execute("DELETE FROM defect_logs")
-                conn.commit()
-                conn.close()
 
-                # 2. Excel sheet ke fresh records insert
-                for _, row in parsed.iterrows():
-                    insert_record({
-                        "Unit": row["Unit"], "Nomenclature": row["Nomenclature"], "Veh_BA_No": row["Veh_BA_No"],
-                        "Dt_Induction": row["Dt_Induction"], "Dt_In": row["Dt_In"], "Dt_Out": row["Dt_Out"],
-                        "KM_In": int(row["KM_In_Num"]), "KM_Out": int(row["KM_In_Num"]),
-                        "Defect": row["Defect"], "Repair_Activity": row["Repair_Activity"]
-                    }, username)
-                st.sidebar.success("✅ Log Ingested & Saved to Database")
-
-                # 3. Flag set taaki infinite rerun loop na bane
-                st.session_state["current_file"] = file_id
-                st.sidebar.success("✅ Log Ingested & Saved to Database")
-                st.rerun()
-            except Exception as e:
-                st.sidebar.error(f"Error parsing file: {e}")
+# DYNAMIC DATA BINDING: Use uploaded file directly if present
+if uploaded_file is not None:
+    try:
+        new_df = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
+        df_full = parse_features(new_df)
+        st.sidebar.success(f"✅ Active: {uploaded_file.name} ({len(df_full)} Logs)")
+    except Exception as e:
+        st.sidebar.error(f"Error parsing file: {e}")
+        raw_store = load_all_records()
+        df_full = parse_features(raw_store)
 else:
-    st.sidebar.info("🔒 Read-only access — upload disabled for your role")
+    raw_store = load_all_records()
+    df_full = parse_features(raw_store)
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("🔍 Filters")
 
-sel_unit = st.sidebar.selectbox("Filter Unit (15 Units)", ["All Units"] + units_15)
-sel_variant = st.sidebar.selectbox("Filter Vehicle Type", ["All Vehicles"] + (sorted(df_full['Nomenclature'].unique()) if not df_full.empty else []))
-sel_sub = st.sidebar.selectbox("Filter Subsystem Defect", ["All Subsystems"] + (sorted(df_full['Subsystem'].unique()) if not df_full.empty else []))
+unit_list = sorted(list(df_full['Unit'].astype(str).unique())) if not df_full.empty else []
+sel_unit = st.sidebar.selectbox("Filter Unit", ["All Units"] + unit_list)
+
+var_list = sorted(list(df_full['Nomenclature'].astype(str).unique())) if not df_full.empty else []
+sel_variant = st.sidebar.selectbox("Filter Vehicle Type", ["All Vehicles"] + var_list)
+
+sub_list = sorted(list(df_full['Subsystem'].astype(str).unique())) if not df_full.empty else []
+sel_sub = st.sidebar.selectbox("Filter Subsystem Defect", ["All Subsystems"] + sub_list)
+
 sel_vin = st.sidebar.selectbox("Filter Vintage (Age)", ["All Vintage", "0-5 Years", "5-10 Years", "10-15 Years", "15+ Years"])
 sel_mil = st.sidebar.selectbox("Filter Mileage Range", ["All Mileage", "0-25k KM", "25k-50k KM", "50k-75k KM", "75k-1 Lakh KM", "Beyond 1 Lakh KM"])
 
-if user_role in ["editor", "Admin"]:
+if user_role in ["editor", "Admin"] and uploaded_file is None:
     st.sidebar.markdown("---")
-    st.sidebar.subheader("➕ Add / Update Defect Record")
+    st.sidebar.subheader("➕ Add Single Defect Record (DB)")
     with st.sidebar.form("add_new_defect_form", clear_on_submit=True):
         in_unit = st.selectbox("Assigned Unit", units_15)
         in_nom = st.selectbox("Vehicle Platform", ["2.5 TON", "ALS", "5 KL W/B", "Specialist Veh"])
@@ -383,7 +362,7 @@ if not dff.empty:
     if sel_mil != "All Mileage": dff = dff[dff['Mileage_Category'] == sel_mil]
 
 # ---------------------------------------------------------
-# 10. EXECUTIVE HEADER & TOP METRICS
+# 8. EXECUTIVE HEADER & TOP METRICS
 # ---------------------------------------------------------
 st.title("🪖 Army Fleet Predictive Maintenance Dashboard")
 st.caption(f"Active Filter: **{sel_unit}** | Platform: **{sel_variant}** | Subsystem: **{sel_sub}**")
@@ -409,7 +388,7 @@ with k5:
 st.markdown("---")
 
 # ---------------------------------------------------------
-# 11. TABS
+# 9. TABS
 # ---------------------------------------------------------
 tab_analytics, tab_vm, tab_diag, tab_docket = st.tabs([
     "📊 Subsystem Defect Analytics",
