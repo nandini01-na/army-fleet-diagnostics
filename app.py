@@ -312,29 +312,34 @@ units_15 = [f"Unit {chr(65 + i)}" for i in range(15)]
 # Upload enabled for both editor and Admin
 if user_role in ["editor", "Admin"]:
     uploaded_file = st.sidebar.file_uploader("📂 Ingest Unit Workshop File (.xlsx / .csv)", type=["xlsx", "csv"])
-    if uploaded_file:
-        try:
-            new_df = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
-            parsed = parse_features(new_df)
-            
-            # --- FIX: Purani entries saaf karke sirf naya file ka data rakhein ---
-            conn = sqlite3.connect(DB_PATH)
-            conn.execute("DELETE FROM defect_logs") # Purana sample saaf
-            conn.commit()
-            conn.close()
-            # ---------------------------------------------------------------------
+    if uploaded_file is not None:
+        file_id = f"{uploaded_file.name}_{uploaded_file.size}"
+        if st.session_state.get("current_file") != file_id:
+            try:
+                new_df = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
+                parsed = parse_features(new_df)
+                
+                # 1. Purana sample data delete taaki logs mix na hon
+                conn = sqlite3.connect(DB_PATH)
+                conn.execute("DELETE FROM defect_logs")
+                conn.commit()
+                conn.close()
 
-            for _, row in parsed.iterrows():
-                insert_record({
-                    "Unit": row["Unit"], "Nomenclature": row["Nomenclature"], "Veh_BA_No": row["Veh_BA_No"],
-                    "Dt_Induction": row["Dt_Induction"], "Dt_In": row["Dt_In"], "Dt_Out": row["Dt_Out"],
-                    "KM_In": int(row["KM_In_Num"]), "KM_Out": int(row["KM_In_Num"]),
-                    "Defect": row["Defect"], "Repair_Activity": row["Repair_Activity"]
-                }, username)
-            st.sidebar.success("✅ Log Ingested & Saved to Database")
-            st.rerun()
-        except Exception as e:
-            st.sidebar.error(f"Error parsing file: {e}")
+                # 2. Excel sheet ke fresh records insert
+                for _, row in parsed.iterrows():
+                    insert_record({
+                        "Unit": row["Unit"], "Nomenclature": row["Nomenclature"], "Veh_BA_No": row["Veh_BA_No"],
+                        "Dt_Induction": row["Dt_Induction"], "Dt_In": row["Dt_In"], "Dt_Out": row["Dt_Out"],
+                        "KM_In": int(row["KM_In_Num"]), "KM_Out": int(row["KM_In_Num"]),
+                        "Defect": row["Defect"], "Repair_Activity": row["Repair_Activity"]
+                    }, username)
+
+                # 3. Flag set taaki infinite rerun loop na bane
+                st.session_state["current_file"] = file_id
+                st.sidebar.success("✅ Log Ingested & Saved to Database")
+                st.rerun()
+            except Exception as e:
+                st.sidebar.error(f"Error parsing file: {e}")
 else:
     st.sidebar.info("🔒 Read-only access — upload disabled for your role")
 
