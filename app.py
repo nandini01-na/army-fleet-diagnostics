@@ -511,26 +511,30 @@ with tab_diag:
             st.dataframe(v_data[['Dt_In', 'KM_In', 'Defect', 'Repair_Activity', 'Subsystem', 'Action_Type']], use_container_width=True)
     else:
         st.info("No vehicles match current filters.")
-
 with tab_docket:
     st.subheader("📋 Digital Maintenance Docket")
     cols = ['Veh_BA_No', 'Unit', 'Nomenclature', 'Vintage_Category', 'Mileage_Category', 'KM_In',
             'Defect', 'Repair_Activity', 'Subsystem', 'Action_Type', 'AI_Failure_Risk_%', 'Tactical_Status']
 
     if dff.empty:
-        st.info("No records to display.")
-    elif user_role in ["editor", "Admin"]:
-        st.caption("Double click any cell to edit details directly, or add new rows at the bottom.")
-        edited_df = st.data_editor(dff[cols], num_rows="dynamic", use_container_width=True)
+        st.info("No records to display for active filters.")
     else:
-        st.caption("🔒 Read-only view — your role does not permit editing.")
-        st.dataframe(dff[cols], use_container_width=True)
-        edited_df = dff[cols]
+        if user_role in ["editor", "Admin"]:
+            st.caption("Double click any cell to edit details directly, or add new rows at the bottom.")
+            edited_df = st.data_editor(dff[cols], num_rows="dynamic", use_container_width=True)
+        else:
+            st.caption("🔒 Read-only view — your role does not permit editing.")
+            st.dataframe(dff[cols], use_container_width=True)
+            edited_df = dff[cols]
 
-    csv_bytes = edited_df.to_csv(index=False).encode('utf-8')
-    st.download_button(
-        label="📥 Download Maintenance Docket (CSV)",
-        data=csv_bytes,
-        file_name=f"Army_Fleet_Docket_{datetime.now().strftime('%d_%b_%Y')}.csv",
-        mime="text/csv"
-    )
+        csv_bytes = edited_df.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label="📥 Download Maintenance Docket (CSV)",
+            data=csv_bytes,
+            file_name=f"Army_Fleet_Docket_{datetime.now().strftime('%d_%b_%Y')}.csv",
+            mime="text/csv"
+        )
+
+            
+
+    
