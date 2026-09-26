@@ -316,6 +316,14 @@ if user_role in ["editor", "Admin"]:
         try:
             new_df = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
             parsed = parse_features(new_df)
+            
+            # --- FIX: Purani entries saaf karke sirf naya file ka data rakhein ---
+            conn = sqlite3.connect(DB_PATH)
+            conn.execute("DELETE FROM defect_logs") # Purana sample saaf
+            conn.commit()
+            conn.close()
+            # ---------------------------------------------------------------------
+
             for _, row in parsed.iterrows():
                 insert_record({
                     "Unit": row["Unit"], "Nomenclature": row["Nomenclature"], "Veh_BA_No": row["Veh_BA_No"],
