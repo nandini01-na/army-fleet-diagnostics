@@ -333,6 +333,7 @@ if user_role in ["editor", "Admin"]:
                         "KM_In": int(row["KM_In_Num"]), "KM_Out": int(row["KM_In_Num"]),
                         "Defect": row["Defect"], "Repair_Activity": row["Repair_Activity"]
                     }, username)
+                st.sidebar.success("✅ Log Ingested & Saved to Database")
 
                 # 3. Flag set taaki infinite rerun loop na bane
                 st.session_state["current_file"] = file_id
